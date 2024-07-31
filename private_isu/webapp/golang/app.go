@@ -172,7 +172,8 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 }
 
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
-	postIDs := make([]int, len(results))
+	// postIDsを初期化する
+	postIDs := make([]int, 0, len(results))
 	for _, p := range results {
 		postIDs = append(postIDs, p.ID)
 	}
@@ -193,12 +194,19 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	}
 
 	// ユーザー情報を一度に取得
-	userIDs := make([]int, len(comments))
+	userIDs := make([]int, 0, len(comments)+len(results))
+	userIDMap := make(map[int]bool)
 	for _, comment := range comments {
-		userIDs = append(userIDs, comment.UserID)
+		if !userIDMap[comment.UserID] {
+			userIDs = append(userIDs, comment.UserID)
+			userIDMap[comment.UserID] = true
+		}
 	}
 	for _, post := range results {
-		userIDs = append(userIDs, post.UserID)
+		if !userIDMap[post.UserID] {
+			userIDs = append(userIDs, post.UserID)
+			userIDMap[post.UserID] = true
+		}
 	}
 	userQuery, args, err := sqlx.In("SELECT * FROM users WHERE id IN (?)", userIDs)
 	if err != nil {
@@ -221,7 +229,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		commentMap[comment.PostID] = append(commentMap[comment.PostID], comment)
 	}
 
-	posts := make([]Post, len(results))
+	posts := make([]Post, 0, len(results))
 	for _, post := range results {
 		post.User = userMap[post.UserID]
 		post.Comments = commentMap[post.ID]
