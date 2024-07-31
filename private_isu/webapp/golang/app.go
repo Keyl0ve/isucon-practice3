@@ -172,7 +172,7 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 }
 
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
-	var postIDs []int
+	postIDs := make([]int, len(results))
 	for _, p := range results {
 		postIDs = append(postIDs, p.ID)
 	}
@@ -193,7 +193,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	}
 
 	// ユーザー情報を一度に取得
-	var userIDs []int
+	userIDs := make([]int, len(comments))
 	for _, comment := range comments {
 		userIDs = append(userIDs, comment.UserID)
 	}
@@ -215,13 +215,13 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	}
 
 	// コメントをポストにマップ
-	commentMap := make(map[int][]Comment)
+	commentMap := make(map[int][]Comment, len(comments))
 	for _, comment := range comments {
 		comment.User = userMap[comment.UserID]
 		commentMap[comment.PostID] = append(commentMap[comment.PostID], comment)
 	}
 
-	var posts []Post
+	posts := make([]Post, len(results))
 	for _, post := range results {
 		post.User = userMap[post.UserID]
 		post.Comments = commentMap[post.ID]
