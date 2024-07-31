@@ -118,7 +118,13 @@ func escapeshellarg(arg string) string {
 
 func digest(src string) string {
 	// opensslのバージョンによっては (stdin)= というのがつくので取る
+<<<<<<< HEAD
 	out, err := exec.Command("/bin/bash", "-c", `printf "%s" `+escapeshellarg(src)+` | openssl dgst -sha512 | sed 's/^.*= //'`).Output()
+=======
+	log.Println("/bin/bash", "-c", `printf "%s"`+escapeshellarg(src)+` | openssl dgst -sha512 | sed 's/^.*= //`)
+
+	out, err := exec.Command("/bin/bash", "-c", `printf "%s"`+escapeshellarg(src)+` | openssl dgst -sha512 | sed 's/^.*= //`).Output()
+>>>>>>> 6a5108a6b6caf4b6ca78685cc2eae800714e7e97
 	if err != nil {
 		log.Print(err)
 		return ""
