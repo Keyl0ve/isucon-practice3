@@ -399,27 +399,19 @@ func getLogout(w http.ResponseWriter, r *http.Request) {
 
 func getIndex(w http.ResponseWriter, r *http.Request) {
 	me := getSessionUser(r)
-	var posts []Post
 
-	cacheKey := "index_posts"
-	item, err := memcacheClient.Get(cacheKey)
-	if err == nil {
-		json.Unmarshal(item.Value, &posts)
-	} else {
-		results := []Post{}
-		err = db.Select(&results, "SELECT id, user_id, body, mime, created_at FROM posts ORDER BY created_at DESC")
-		if err != nil {
-			log.Print(err)
-			return
-		}
-		posts, err = makePosts(results, getCSRFToken(r), false)
-		if err != nil {
-			log.Print(err)
-			return
-		}
+	results := []Post{}
 
-		data, _ := json.Marshal(posts)
-		memcacheClient.Set(&memcache.Item{Key: cacheKey, Value: data, Expiration: 60})
+	err := db.Select(&results, "SELECT id, user_id, body, mime, created_at FROM posts ORDER BY created_at DESC")
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	posts, err := makePosts(results, getCSRFToken(r), false)
+	if err != nil {
+		log.Print(err)
+		return
 	}
 
 	fmap := template.FuncMap{
@@ -438,7 +430,6 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 		Flash     string
 	}{posts, me, getCSRFToken(r), getFlash(w, r, "notice")})
 }
-
 
 func getAccountName(w http.ResponseWriter, r *http.Request) {
 	accountName := r.PathValue("accountName")
