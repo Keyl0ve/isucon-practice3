@@ -32,7 +32,7 @@ var (
 const (
 	postsPerPage  = 20
 	ISO8601Format = "2006-01-02T15:04:05-07:00"
-	UploadLimit   = 10 * 1024 * 1024 // 10mb
+	UploadLimit   = 10 * 1024 * 1024 // 10MB
 )
 
 type User struct {
@@ -137,9 +137,10 @@ func calculatePasshash(accountName, password string) string {
 
 func getSession(r *http.Request) *sessions.Session {
 	session, _ := store.Get(r, "isuconp-go.session")
-
 	return session
 }
+
+var sessionUserCache = make(map[string]User)
 
 func getSessionUser(r *http.Request) User {
 	session := getSession(r)
@@ -148,13 +149,18 @@ func getSessionUser(r *http.Request) User {
 		return User{}
 	}
 
-	u := User{}
+	cacheKey := fmt.Sprintf("%d", uid)
+	if user, found := sessionUserCache[cacheKey]; found {
+		return user
+	}
 
+	u := User{}
 	err := db.Get(&u, "SELECT * FROM `users` WHERE `id` = ?", uid)
 	if err != nil {
 		return User{}
 	}
 
+	sessionUserCache[cacheKey] = u
 	return u
 }
 
@@ -174,46 +180,45 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
+	// 投稿のIDを収集する
+	postIDs := make([]int, len(results))
+	for i, p := range results {
+		postIDs[i] = p.ID
+	}
+
+	// 各投稿のコメントとコメント数を一度に取得する
+	query, args, err := sqlx.In(`
+		SELECT c.*, u.id AS user_id, u.account_name, u.del_flg
+		FROM comments c
+		JOIN users u ON c.user_id = u.id
+		WHERE c.post_id IN (?) AND u.del_flg = 0
+		ORDER BY c.created_at DESC`, postIDs)
+	if err != nil {
+		return nil, err
+	}
+	if !allComments {
+		query += " LIMIT 3"
+	}
+
+	var comments []Comment
+	err = db.Select(&comments, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	// コメントをポストにマップする
+	commentMap := make(map[int][]Comment)
+	for _, c := range comments {
+		commentMap[c.PostID] = append(commentMap[c.PostID], c)
+	}
+
+	// 各投稿にコメントを割り当てる
 	for _, p := range results {
-		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
-		if !allComments {
-			query += " LIMIT 3"
-		}
-		var comments []Comment
-		err = db.Select(&comments, query, p.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		for i := 0; i < len(comments); i++ {
-			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		// reverse
-		for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
-			comments[i], comments[j] = comments[j], comments[i]
-		}
-
-		p.Comments = comments
-
-		err = db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
-		if err != nil {
-			return nil, err
-		}
-
+		p.Comments = commentMap[p.ID]
+		p.CommentCount = len(p.Comments)
 		p.CSRFToken = csrfToken
 
-		if p.User.DelFlg == 0 {
-			posts = append(posts, p)
-		}
+		posts = append(posts, p)
 		if len(posts) >= postsPerPage {
 			break
 		}
@@ -451,29 +456,19 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	postIDs := []int{}
-	err = db.Select(&postIDs, "SELECT `id` FROM `posts` WHERE `user_id` = ?", user.ID)
-	if err != nil {
-		log.Print(err)
-		return
-	}
-	postCount := len(postIDs)
-
+	postCount := len(results)
 	commentedCount := 0
 	if postCount > 0 {
-		s := []string{}
-		for range postIDs {
-			s = append(s, "?")
+		postIDs := make([]int, postCount)
+		for i, p := range results {
+			postIDs[i] = p.ID
 		}
-		placeholder := strings.Join(s, ", ")
-
-		// convert []int -> []interface{}
-		args := make([]interface{}, len(postIDs))
-		for i, v := range postIDs {
-			args[i] = v
+		query, args, err := sqlx.In("SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN (?)", postIDs)
+		if err != nil {
+			log.Print(err)
+			return
 		}
-
-		err = db.Get(&commentedCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN ("+placeholder+")", args...)
+		err = db.Get(&commentedCount, query, args...)
 		if err != nil {
 			log.Print(err)
 			return
