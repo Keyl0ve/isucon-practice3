@@ -36,21 +36,21 @@ const (
 )
 
 type User struct {
-	ID          int       db:"id"
-	AccountName string    db:"account_name"
-	Passhash    string    db:"passhash"
-	Authority   int       db:"authority"
-	DelFlg      int       db:"del_flg"
-	CreatedAt   time.Time db:"created_at"
+	ID          int       `db:"id"`
+	AccountName string    `db:"account_name"`
+	Passhash    string    `db:"passhash"`
+	Authority   int       `db:"authority"`
+	DelFlg      int       `db:"del_flg"`
+	CreatedAt   time.Time `db:"created_at"`
 }
 
 type Post struct {
-	ID           int       db:"id"
-	UserID       int       db:"user_id"
-	Imgdata      []byte    db:"imgdata"
-	Body         string    db:"body"
-	Mime         string    db:"mime"
-	CreatedAt    time.Time db:"created_at"
+	ID           int       `db:"id"`
+	UserID       int       `db:"user_id"`
+	Imgdata      []byte    `db:"imgdata"`
+	Body         string    `db:"body"`
+	Mime         string    `db:"mime"`
+	CreatedAt    time.Time `db:"created_at"`
 	CommentCount int
 	Comments     []Comment
 	User         User
@@ -58,11 +58,11 @@ type Post struct {
 }
 
 type Comment struct {
-	ID        int       db:"id"
-	PostID    int       db:"post_id"
-	UserID    int       db:"user_id"
-	Comment   string    db:"comment"
-	CreatedAt time.Time db:"created_at"
+	ID        int       `db:"id"`
+	PostID    int       `db:"post_id"`
+	UserID    int       `db:"user_id"`
+	Comment   string    `db:"comment"`
+	CreatedAt time.Time `db:"created_at"`
 	User      User
 }
 
@@ -105,8 +105,8 @@ func tryLogin(accountName, password string) *User {
 }
 
 func validateUser(accountName, password string) bool {
-	return regexp.MustCompile(\A[0-9a-zA-Z_]{3,}\z).MatchString(accountName) &&
-		regexp.MustCompile(\A[0-9a-zA-Z_]{6,}\z).MatchString(password)
+	return regexp.MustCompile(`\A[0-9a-zA-Z_]{3,}\z`).MatchString(accountName) &&
+		regexp.MustCompile(`\A[0-9a-zA-Z_]{6,}\z`).MatchString(password)
 }
 
 // 今回のGo実装では言語側のエスケープの仕組みが使えないのでOSコマンドインジェクション対策できない
@@ -118,7 +118,7 @@ func escapeshellarg(arg string) string {
 
 func digest(src string) string {
 	// opensslのバージョンによっては (stdin)= というのがつくので取る
-	out, err := exec.Command("/bin/bash", "-c", printf "%s" +escapeshellarg(src)+ | openssl dgst -sha512 | sed 's/^.*= //').Output()
+	out, err := exec.Command("/bin/bash", "-c", `printf "%s"`+escapeshellarg(src)+` | openssl dgst -sha512 | sed 's/^.*= //`).Output()
 	if err != nil {
 		log.Print(err)
 		return ""
@@ -150,7 +150,7 @@ func getSessionUser(r *http.Request) User {
 
 	u := User{}
 
-	err := db.Get(&u, "SELECT * FROM users WHERE id = ?", uid)
+	err := db.Get(&u, "SELECT * FROM `users` WHERE `id` = ?", uid)
 	if err != nil {
 		return User{}
 	}
@@ -236,7 +236,6 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 
 	return posts, nil
 }
-
 
 func imageURL(p Post) string {
 	ext := ""
@@ -861,7 +860,7 @@ func main() {
 	r.Post("/comment", postComment)
 	r.Get("/admin/banned", getAdminBanned)
 	r.Post("/admin/banned", postAdminBanned)
-	r.Get(/@{accountName:[a-zA-Z]+}, getAccountName)
+	r.Get(`/@{accountName:[a-zA-Z]+}`, getAccountName)
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		http.FileServer(http.Dir("../public")).ServeHTTP(w, r)
 	})
