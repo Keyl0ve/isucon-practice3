@@ -398,38 +398,47 @@ func getLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func getIndex(w http.ResponseWriter, r *http.Request) {
-	me := getSessionUser(r)
+    me := getSessionUser(r)
+    var posts []Post
 
-	results := []Post{}
+    cacheKey := "index_posts"
+    item, err := memcacheClient.Get(cacheKey)
+    if err == nil {
+        json.Unmarshal(item.Value, &posts)
+    } else {
+        results := []Post{}
+        err = db.Select(&results, "SELECT id, user_id, body, mime, created_at FROM posts ORDER BY created_at DESC")
+        if err != nil {
+            log.Print(err)
+            return
+        }
+        posts, err = makePosts(results, getCSRFToken(r), false)
+        if err != nil {
+            log.Print(err)
+            return
+        }
 
-	err := db.Select(&results, "SELECT id, user_id, body, mime, created_at FROM posts ORDER BY created_at DESC")
-	if err != nil {
-		log.Print(err)
-		return
-	}
+        data, _ := json.Marshal(posts)
+        memcacheClient.Set(&memcache.Item{Key: cacheKey, Value: data, Expiration: 60})
+    }
 
-	posts, err := makePosts(results, getCSRFToken(r), false)
-	if err != nil {
-		log.Print(err)
-		return
-	}
+    fmap := template.FuncMap{
+        "imageURL": imageURL,
+    }
 
-	fmap := template.FuncMap{
-		"imageURL": imageURL,
-	}
-
-	template.Must(template.New("layout.html").Funcs(fmap).ParseFiles(
-		getTemplPath("layout.html"),
-		getTemplPath("index.html"),
-		getTemplPath("posts.html"),
-		getTemplPath("post.html"),
-	)).Execute(w, struct {
-		Posts     []Post
-		Me        User
-		CSRFToken string
-		Flash     string
-	}{posts, me, getCSRFToken(r), getFlash(w, r, "notice")})
+    template.Must(template.New("layout.html").Funcs(fmap).ParseFiles(
+        getTemplPath("layout.html"),
+        getTemplPath("index.html"),
+        getTemplPath("posts.html"),
+        getTemplPath("post.html"),
+    )).Execute(w, struct {
+        Posts     []Post
+        Me        User
+        CSRFToken string
+        Flash     string
+    }{posts, me, getCSRFToken(r), getFlash(w, r, "notice")})
 }
+
 
 func getAccountName(w http.ResponseWriter, r *http.Request) {
 	accountName := r.PathValue("accountName")
